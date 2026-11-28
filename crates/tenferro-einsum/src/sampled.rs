@@ -72,6 +72,8 @@ mod plan;
 #[cfg(feature = "autodiff")]
 pub(crate) use exec::execute_eager;
 pub(crate) use exec::{execute_concrete, ExecStats};
+#[cfg(feature = "step172-exp")]
+pub use exec::step172::run as step172_exp_run;
 
 type Res<T> = tenferro_tensor::Result<T>;
 

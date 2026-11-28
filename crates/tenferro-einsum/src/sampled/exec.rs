@@ -21,6 +21,9 @@ use super::plan::{Instr, PairStep, Program};
 use crate::chunked::{run_chunks, ChunkSource};
 use crate::{ConcreteEinsumPlan, Error, Result};
 
+#[cfg(feature = "step172-exp")]
+pub mod step172;
+
 /// What one run measured.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ExecStats {

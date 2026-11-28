@@ -99,6 +99,9 @@ mod optimize;
 mod planning;
 pub mod prelude;
 mod sampled;
+/// Measurement entry for tensor4all/tenferro-rs#2756 (local experiment, not for merge).
+#[cfg(feature = "step172-exp")]
+pub use sampled::step172_exp_run;
 mod sliced;
 mod subscripts;
 mod syntax;

@@ -20,6 +20,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 features = ["autodiff", "cuda"]
 
 [features]
+# Local measurement for tensor4all/tenferro-rs#2756; not for merge.
+step172-exp = []
 # Test support, off by default (see `tenferro-cpu`): placement-ledger assertions.
 ledger = ["tenferro-cpu/ledger"]
 autodiff = ["dep:tenferro-ad", "tenferro-ad/autodiff"]
