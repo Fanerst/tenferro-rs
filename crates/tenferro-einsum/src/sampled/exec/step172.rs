@@ -21,7 +21,7 @@ use std::time::Instant;
 use cpueinsum::tcontract::PlanConfig;
 use cpueinsum::{GroupedGemmJob, GroupedPlan, GroupedRoute};
 use tenferro_cpu::{CpuEngine, Pool};
-use tenferro_tensor::{Complex32, DType, Engine, Tensor, TensorRead};
+use tenferro_tensor::{Complex32, DType, Tensor, TensorRead, TensorStructural};
 
 use super::super::plan::{Contraction, Instr, PairStep, Program};
 use super::super::{SampleOptions, SampledEinsumPlan, Samples};
@@ -368,7 +368,8 @@ fn run_v0(
     let gathered_elems = pairs * (g.m * g.k + g.k * g.n);
     let mut last = None;
     for run in 0..=warm {
-        last = None;
+        // Drop the previous run's result before this run allocates its own.
+        drop(last.take());
         let t = Instant::now();
         let (result, stats) = execute_concrete(&program, &plans, &reads, engine).map_err(err)?;
         let secs = t.elapsed().as_secs_f64();
@@ -501,7 +502,7 @@ fn run_grouped(
         let mut out = if reusing {
             kept.take().ok_or_else(|| "no output to reuse".to_string())?
         } else {
-            kept = None;
+            drop(kept.take());
             Box::<[Complex32]>::new_uninit_slice(out_len)
         };
         let rhs: &[Complex32] = if by_row { &gathered } else { right };
