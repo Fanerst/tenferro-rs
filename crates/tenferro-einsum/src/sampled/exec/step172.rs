@@ -573,9 +573,26 @@ fn run_grouped(
     Ok(())
 }
 
-fn engine(threads: usize) -> Res<CpuEngine> {
+/// The engine; `STEP172_POLICY` (`inner`, `outer` or `sequential`) forces its
+/// batch strategy, which decides how a grouped plan splits its jobs. Unset
+/// keeps the shipped default, `Auto`.
+fn engine(threads: usize) -> Res<(CpuEngine, String)> {
+    use tenferro_cpu::{CpuBatchPolicy, CpuBatchStrategy};
     let pool = Pool::builder().threads(threads).build().map_err(err)?;
-    Ok(CpuEngine::new(pool))
+    let mut engine = CpuEngine::new(pool);
+    let policy = std::env::var("STEP172_POLICY").unwrap_or_default();
+    let strategy = match policy.as_str() {
+        "" | "auto" => None,
+        "inner" => Some(CpuBatchStrategy::Inner),
+        "outer" => Some(CpuBatchStrategy::Outer),
+        "sequential" => Some(CpuBatchStrategy::Sequential),
+        other => return Err(format!("unknown STEP172_POLICY `{other}`")),
+    };
+    if let Some(strategy) = strategy {
+        engine.set_batch_policy(CpuBatchPolicy::new(strategy));
+    }
+    let name = format!("{:?}", engine.batch_policy().strategy);
+    Ok((engine, name))
 }
 
 /// Entry point of the step-172 measurement (feature `step172-exp`).
@@ -624,7 +641,13 @@ pub fn run(args: &[String]) -> std::result::Result<(), String> {
     if mode == "info" {
         return Ok(());
     }
-    let mut engine = engine(threads)?;
+    let (mut engine, policy) = engine(threads)?;
+    emit(&[
+        ("tag", q(&tag)),
+        ("variant", q("engine")),
+        ("batch_strategy", q(&policy)),
+        ("buffer_pool_limit_bytes", engine.buffer_pool_limit_bytes().to_string()),
+    ]);
     let left_len = g.m * g.k * g.rows_left;
     let right_len = g.k * g.n * g.rows_right;
     match mode.as_str() {
