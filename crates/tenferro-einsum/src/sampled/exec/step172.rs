@@ -581,7 +581,7 @@ fn engine(threads: usize) -> Res<CpuEngine> {
 /// Entry point of the step-172 measurement (feature `step172-exp`).
 ///
 /// `args`: `CASE MODE THREADS WARM [WHICH]`, where `MODE` is `info`, `v0`,
-/// `pair`, `row` or `check`, and `WHICH` picks the gathered-pairs step (0 is
+/// `pair`, `row`, `check` or `kernel`, and `WHICH` picks the gathered-pairs step (0 is
 /// step 172 of n30m14). Each result is one `STEP172 {json}` line on stdout.
 ///
 /// # Errors
@@ -590,7 +590,7 @@ fn engine(threads: usize) -> Res<CpuEngine> {
 /// a failed run.
 pub fn run(args: &[String]) -> std::result::Result<(), String> {
     let [case, mode, threads, warm, rest @ ..] = args else {
-        return Err("usage: CASE info|v0|pair|row|check THREADS WARM [WHICH]".into());
+        return Err("usage: CASE info|v0|pair|row|check|kernel THREADS WARM [WHICH]".into());
     };
     let threads: usize = threads.parse().map_err(err)?;
     let warm: usize = warm.parse().map_err(err)?;
@@ -696,6 +696,64 @@ pub fn run(args: &[String]) -> std::result::Result<(), String> {
                     Some(reference),
                     &tag,
                 )?;
+            }
+        }
+        "kernel" => {
+            // One job of this step's (m, k) with `cols` columns on one thread, the
+            // route each grouped job takes under the engine's batch policy, against
+            // one plain pass over the job's left matrix.
+            let left = random_c32(g.m * g.k, 1);
+            let t = Instant::now();
+            let copied = left.clone();
+            let copy_seconds = t.elapsed().as_secs_f64();
+            let t = Instant::now();
+            let sum: f32 = left.iter().map(|z| z.re).sum();
+            let read_seconds = t.elapsed().as_secs_f64();
+            drop(copied);
+            emit(&[
+                ("tag", q(&tag)),
+                ("variant", q("kernel-reference")),
+                ("left_elements", left.len().to_string()),
+                ("one_thread_copy_seconds", format!("{copy_seconds:.6}")),
+                ("one_thread_read_seconds", format!("{read_seconds:.6}")),
+                ("checksum", format!("{sum:.3}")),
+            ]);
+            let one = Complex32::new(1.0, 0.0);
+            let zero = Complex32::new(0.0, 0.0);
+            for cols in [1usize, 2, 4, 8, 16, 26, 32, 64] {
+                let rhs = random_c32(g.k * cols, 2);
+                let jobs = [GroupedGemmJob::new(0, 0, 0, g.m, g.k, cols)];
+                let plan = GroupedPlan::<Complex32>::new(&jobs, &PlanConfig::default())
+                    .map_err(err)?;
+                let mut out = Box::<[Complex32]>::new_uninit_slice(g.m * cols);
+                let mut times = Vec::new();
+                for _ in 0..(warm.max(1) + 1) {
+                    let t = Instant::now();
+                    plan.execute_uninit(
+                        &mut cpueinsum::Exec::serial(),
+                        one,
+                        &left,
+                        &rhs,
+                        zero,
+                        &mut out,
+                    )
+                    .map_err(err)?;
+                    times.push(t.elapsed().as_secs_f64());
+                }
+                // The first run touches a fresh output; the rest reuse it.
+                let warm_times = &times[1..];
+                let best = warm_times.iter().copied().fold(f64::INFINITY, f64::min);
+                emit(&[
+                    ("tag", q(&tag)),
+                    ("variant", q("kernel")),
+                    ("m", g.m.to_string()),
+                    ("k", g.k.to_string()),
+                    ("cols", cols.to_string()),
+                    ("first_seconds", format!("{:.6}", times[0])),
+                    ("best_warm_seconds", format!("{best:.6}")),
+                    ("madds_per_second", format!("{:.4e}", (g.m * g.k * cols) as f64 / best)),
+                    ("left_reads_per_job", format!("{:.2}", best / read_seconds)),
+                ]);
             }
         }
         other => return Err(format!("unknown mode `{other}`")),
