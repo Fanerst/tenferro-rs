@@ -1,0 +1,14 @@
+[package]
+name = "step172"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Measurement for tensor4all/tenferro-rs#2756. tenferro-rs is main 61e0a108 plus the
+# local `step172-exp` module (branch exp/step172-v1-variants), unpacked next to this
+# crate as ../tf.
+[dependencies]
+tenferro-einsum = { path = "../tf/crates/tenferro-einsum", features = ["step172-exp"] }
+
+[profile.release]
+debug = 1
